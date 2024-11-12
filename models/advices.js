@@ -8,4 +8,5 @@ const adviceSchema = mongoose.Schema({
 
 const Advice = mongoose.model('advices', adviceSchema);
 
+
 module.exports = Advice;

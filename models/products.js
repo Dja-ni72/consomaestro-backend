@@ -6,7 +6,6 @@ const productSchema = mongoose.Schema({
   upc: {type: Number, require: true},
   image: String,
   dlc: Date,
-  dgccrf: [String],
   users: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   storagePlace: String,
 });

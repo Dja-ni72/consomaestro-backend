@@ -31,7 +31,6 @@ router.post('/signup', (req, res) => {
 
   // the token is created with 32 random characters
         token: uid2(32),
-        canBookmark: true,
       });
 
       newUser.save().then(newDoc => {

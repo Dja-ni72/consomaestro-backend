@@ -1,116 +1,114 @@
-var express = require('express');
-var router = express.Router();
-const User = require('../models/users');
-const { checkBody } = require('../modules/checkBody');
-const uid2 = require('uid2');
-const bcrypt = require('bcrypt');
-const authMiddleware = require('../middleware/authMiddleware');
-const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/; // Regex format email valide
+var express = require('express'); // Importation du framework Express pour créer des routes et gérer les requêtes HTTP.
+var router = express.Router(); // Création d'un routeur Express pour définir les routes de l'API.
+const User = require('../models/users'); // Importation du modèle User pour interagir avec la base de données.
+const { checkBody } = require('../modules/checkBody'); // Importation d'une fonction utilitaire pour valider les champs de la requête.
+const uid2 = require('uid2'); // Importation de uid2 pour générer des jetons uniques pour les utilisateurs.
+const bcrypt = require('bcrypt'); // Importation de bcrypt pour hacher les mots de passe de manière sécurisée.
+const authMiddleware = require('../middleware/authMiddleware'); // Middleware pour vérifier l'authentification de l'utilisateur.
+const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/; // Expression régulière pour valider le format des emails.
 
+// Route pour inscrire un utilisateur
 router.post('/signup', (req, res) => {
-  if (!checkBody(req.body, ['email','username', 'password'])) {
+  // Vérifie si les champs requis ('email', 'username', 'password') sont présents dans le corps de la requête.
+  if (!checkBody(req.body, ['email', 'username', 'password'])) {
     res.json({ result: false, error: 'Champs vides ou manquants' });
-    return;
+    return; // Arrête l'exécution si les champs sont invalides.
   }
 
-  // Vérification du format de l'email
-  if (!emailRegex.test(req.body.email)) {
+   // Vérifie si l'email respecte le format spécifié par l'expression régulière.
+   if (!emailRegex.test(req.body.email)) {
     return res.json({ result: false, error: 'Email invalide' });
   }
-  // Check if the user has not already been registered.
+  // Cherche dans la base de données un utilisateur avec le même nom d'utilisateur.
   User.findOne({ username: req.body.username }).then(data => {
-    if (data === null) {
-
-  // The password is being hashed 10 times before being stored in the database.
-      const hash = bcrypt.hashSync(req.body.password, 10);
-
+    if (data === null) { // Si aucun utilisateur n'est trouvé, on peut en créer un.
+      const hash = bcrypt.hashSync(req.body.password, 10); // Hache le mot de passe avec un facteur de coût de 10.
+      
+      // Création d'un nouvel utilisateur avec les informations fournies.
       const newUser = new User({
         email: req.body.email,
         username: req.body.username,
-        password: hash,
-
-  // the token is created with 32 random characters
-        token: uid2(32),
+        password: hash, // Stocke le mot de passe haché.
+        token: uid2(32), // Génère un jeton unique pour l'utilisateur.
       });
 
+      // Sauvegarde l'utilisateur dans la base de données et renvoie une réponse avec le jeton et l'ID utilisateur.
       newUser.save().then(newDoc => {
         res.json({ result: true, token: newDoc.token, userId: newDoc._id, username: newDoc.username, message: 'Votre compte a bien été créé !' });
       });
     } else {
-      // User already exists in database
+      // Si un utilisateur existe déjà avec ce nom d'utilisateur, renvoie une erreur.
       res.json({ result: false, error: 'Utilisateur déjà existant !' });
     }
   });
 });
 
-// User already exists in database
+
+// Route pour connecter un utilisateur
 router.post('/signin', (req, res) => {
+  // Vérifie si les champs requis ('username', 'password') sont présents.
   if (!checkBody(req.body, ['username', 'password'])) {
     res.json({ result: false, error: 'élément manquant ou champ resté vide' });
     return;
   }
-  // The data entered by the user is compared to what's in the database
+
+  // Cherche l'utilisateur dans la base de données par son nom d'utilisateur.
   User.findOne({ username: req.body.username }).then(data => {
+    // Si l'utilisateur existe et que le mot de passe correspond, renvoie le jeton et les informations utilisateur.
     if (data && bcrypt.compareSync(req.body.password, data.password)) {
       res.json({ result: true, token: data.token, userId: data._id, username: data.username });
     } else {
+      // Sinon, renvoie une erreur indiquant que les informations sont incorrectes.
       res.json({ result: false, error: 'Utilisateur introuvable ou mot de passe incorrect' });
     }
   });
 });
 
 
-// Route to get user profile information
+// Route pour récupérer les informations de profil de l'utilisateur
 router.get('/profile', (req, res) => {
-  // Extract the token from the Authorization header
-  const token = req.headers.authorization && req.headers.authorization.split(' ')[1];
-  console.log(token);
+  const token = req.headers.authorization && req.headers.authorization.split(' ')[1]; // Extrait le jeton du header Authorization.
   
-
-  // Check if token exists
-  if (!token) {
-    return res.status(401).json({ result: false, error: 'Token is required' });
+  if (!token) { // Vérifie si un jeton est fourni.
+    return res.status(401).json({ result: false, error: 'Le token est requis' });
   }
 
+  // Cherche un utilisateur correspondant au jeton fourni et renvoie son email et nom d'utilisateur.
   User.findOne({ token })
-    .select('email username') 
+    .select('email username') // Limite les champs renvoyés aux champs nécessaires.
     .then(user => {
       if (!user) {
-        return res.status(404).json({ result: false, error: 'User not found' });
-      } 
-      console.log();
-      // Return the user data as JSON if found
+        return res.status(404).json({ result: false, error: 'Utilisateur non trouvé' });
+      }
       res.json({ result: true, user });
-    })
+    });
 });
 
 
-// route to update users' email and username
 
+// Route pour mettre à jour l'email ou le nom d'utilisateur
 router.put('/update', authMiddleware, async (req, res) => {
   try {
-    // AuthMiddleware checks that the user is authenticated and then extracts the user ID from the request
-    const userId = req.user.id;
-    const { email, username } = req.body; // Extracts the email and username from the request body
+    const userId = req.user.id; // Extrait l'ID utilisateur du middleware d'authentification.
+    const { email, username } = req.body; // Extrait les champs email et username du corps de la requête.
 
-     // Build an update object based on what fields are present in the request
-     const updateFields = {};
-     if (email) updateFields.email = email;
-     if (username) updateFields.username = username;
+    const updateFields = {}; // Initialise un objet pour stocker les champs à mettre à jour.
+    if (email) updateFields.email = email; // Ajoute l'email si fourni.
+    if (username) updateFields.username = username; // Ajoute le nom d'utilisateur si fourni.
 
-    // Update the user email and username
+    // Met à jour l'utilisateur dans la base de données et renvoie les nouvelles données.
     const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { $set: updateFields },
-      { new: true, runValidators: true } // Returns the user with the updated email and username
+      userId, // ID de l'utilisateur à mettre à jour
+      { $set: updateFields }, // Champs spécifiques à mettre à jour
+      { new: true, runValidators: true } // Options :
+      // - `new: true` : Retourne l'utilisateur après mise à jour
+      // - `runValidators: true` : Applique les règles de validation avant mise à jour
     );
 
-    // Check if the user was updated
-    if (!updatedUser) {
+    if (!updatedUser) { // Vérifie si l'utilisateur a été trouvé et mis à jour.
       return res.status(404).json({ message: "Utilisateur non trouvé" });
     }
 
-    // Returns the updated user data
     res.json({
       message: 'Informations mises à jour avec succès',
       user: {
@@ -124,17 +122,14 @@ router.put('/update', authMiddleware, async (req, res) => {
   }
 });
 
-// route to delete user account
-
+// Route pour supprimer un compte utilisateur
 router.delete('/delete', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id; // Récupération de l'ID de l'utilisateur depuis req.user
+    const userId = req.user.id; // Extrait l'ID utilisateur depuis req.user.
 
-    // Suppression de l'utilisateur dans la base de données
-    const deletedUser = await User.findByIdAndDelete(userId);
+    const deletedUser = await User.findByIdAndDelete(userId); // Supprime l'utilisateur dans la base de données.
 
-    // Vérifie si l'utilisateur a été trouvé et supprimé
-    if (!deletedUser) {
+    if (!deletedUser) { // Vérifie si l'utilisateur a été trouvé et supprimé.
       return res.status(404).json({ success: false, message: 'Utilisateur non trouvé.' });
     }
 
@@ -144,4 +139,5 @@ router.delete('/delete', authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erreur lors de la suppression du compte.' });
   }
 });
-module.exports = router;
+
+module.exports = router; // Exporte le routeur pour l'utiliser dans l'application principale.

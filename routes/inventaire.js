@@ -6,6 +6,7 @@ const Product = require('../models/products');
 // Route GET pour récupérer les produits d'un utilisateur spécifique dans le réfrigérateur
 router.get('/:userId/:inventaire', async (req, res) => {
     const userId = req.params.userId; // Récupération de l'ID utilisateur depuis les paramètres
+    //inventaire = espace de stockage
     const inventaire = req.params.inventaire; // Récupération de l'inventaire depuis les paramètres
     let inventaireTarget = inventaire.charAt(0).toUpperCase() + inventaire.slice(1); // Mettre la première lettre en majuscule
 
